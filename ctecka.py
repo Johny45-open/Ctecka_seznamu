@@ -1,43 +1,39 @@
-# pip install pywinauto
-# NVDA musí běžet, jinak hlásí jen, že není spuštěná
+import pygame
+from gtts import gTTS
+import io
+import speech_recognition as sr
 
-from pywinauto import Desktop
-import nvdaControllerClient
-import psutil
-import time
+# ---- Hlasový výstup ----
+pygame.init()
+def speak(text):
+    print(text)  # vypíše do příkazovky
+    tts = gTTS(text=text, lang='cs')
+    fp = io.BytesIO()
+    tts.write_to_fp(fp)
+    fp.seek(0)
+    pygame.mixer.music.load(fp, "mp3")
+    pygame.mixer.music.play()
+    while pygame.mixer.music.get_busy():
+        pygame.time.Clock().tick(10)
 
-def nvda_running():
-    for proc in psutil.process_iter(['name']):
-        if proc.info['name'] and 'nvda' in proc.info['name'].lower():
-            return True
-    return False
-
-def get_focused_list_item():
-    window = Desktop(backend="uia").get_active()
+# ---- Hlasový vstup ----
+def listen_yes_no():
+    r = sr.Recognizer()
+    with sr.Microphone() as source:
+        speak("Běží Word? Odpověz ano nebo ne.")  # hlas + výpis
+        audio = r.listen(source)
     try:
-        focused_elem = window.child_window(control_type="ListItem", has_focus=True)
-        if focused_elem.exists():
-            return focused_elem
+        text = r.recognize_google(audio, language="cs-CZ")
+        print(f"Rozpoznáno: {text}")  # debug do příkazovky
+        if "ano" in text.lower():
+            return True
+        return False
     except:
-        return None
-    return None
+        return False
 
-def get_item_level(item):
-    level = 0
-    parent = item.parent()
-    while parent:
-        level += 1
-        parent = parent.parent()
-    return level
-
-while True:
-    if nvda_running():
-        item = get_focused_list_item()
-        if item:
-            text = item.window_text()
-            level = get_item_level(item)
-            message = f"Položka: {text}, úroveň: {level}"
-            nvdaControllerClient.speakText(message)
-    else:
-        print("NVDA není spuštěná.")
-    time.sleep(2)  # kontrola každé 2 sekundy
+# ---- Použití ----
+if not listen_yes_no():
+    speak("Word neběží, ukončuji aplikaci.")
+    exit()
+else:
+    speak("Super, začínám číst Word.")
