@@ -1,7 +1,6 @@
 import pygame
 from gtts import gTTS
 import io
-import speech_recognition as sr
 
 # ---- Hlasový výstup ----
 pygame.init()
@@ -16,24 +15,17 @@ def speak(text):
     while pygame.mixer.music.get_busy():
         pygame.time.Clock().tick(10)
 
-# ---- Hlasový vstup ----
-def listen_yes_no():
-    r = sr.Recognizer()
-    with sr.Microphone() as source:
-        speak("Běží Word? Odpověz ano nebo ne.")  # hlas + výpis
-        audio = r.listen(source)
-    try:
-        text = r.recognize_google(audio, language="cs-CZ")
-        print(f"Rozpoznáno: {text}")  # debug do příkazovky
-        if "ano" in text.lower():
-            return True
-        return False
-    except:
+# ---- Dotaz na uživatele ----
+def ask_word_running():
+    speak("Běží Word? Odpověz ano nebo ne.")
+    answer = input("Zadej odpověď (ano/ne): ").strip().lower()
+    if answer == "ano":
+        speak("Super, začínám číst Word.")
+        return True
+    else:
+        speak("Word neběží, ukončuji aplikaci.")
         return False
 
 # ---- Použití ----
-if not listen_yes_no():
-    speak("Word neběží, ukončuji aplikaci.")
+if not ask_word_running():
     exit()
-else:
-    speak("Super, začínám číst Word.")
