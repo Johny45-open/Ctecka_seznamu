@@ -7,7 +7,7 @@ import io
 # ---- Hlasový výstup ----
 pygame.init()
 def speak(text):
-    print(text)
+    print(text)  # vypíše do příkazovky
     tts = gTTS(text=text, lang='cs')
     fp = io.BytesIO()
     tts.write_to_fp(fp)
@@ -43,6 +43,7 @@ if word.Documents.Count == 0:
     word.Documents.Add()
 doc = word.ActiveDocument
 last_position = -1
+last_in_list = False  # pamatujeme si, jestli jsme byli v seznamu
 
 # ---- Funkce pro počítání podpoložek ----
 def count_subitems(paragraph):
@@ -88,10 +89,15 @@ try:
             last_position = start
             para = sel.Paragraphs(1)
             info = get_info(para)
+
             if info["type"] == "seznam":
+                last_in_list = True
                 speak(f"Položka seznamu: '{info['text']}', Úroveň: {info['level']}, Pořadí: {info['index']} z {info['siblings_count']}, Podpoložek: {info['subitems_count']}")
-            elif not only_lists:
-                speak(f"Mimo seznam: '{info['text']}'")
+            else:
+                if last_in_list and not only_lists:  # vyšel z seznamu
+                    speak(f"Mimo seznam: '{info['text']}'")
+                last_in_list = False  # teď jsme mimo seznam
+
         time.sleep(0.5)
 except KeyboardInterrupt:
     speak("Ukončuji sledování Wordu.")
