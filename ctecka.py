@@ -7,7 +7,7 @@ import io
 # ---- Hlasový výstup ----
 pygame.init()
 def speak(text):
-    print(text)  # vypíše do příkazovky
+    print(text)
     tts = gTTS(text=text, lang='cs')
     fp = io.BytesIO()
     tts.write_to_fp(fp)
@@ -31,12 +31,17 @@ def ask_word_running():
 if not ask_word_running():
     exit()
 
+# ---- Dotaz na typ hlášení ----
+speak("Chceš hlásit jen seznamy, nebo i normální text?")
+speak("Zadej 1 pro seznamy, 2 pro seznamy a mimo seznam.")
+mode = input("Zadej 1 nebo 2: ").strip()
+only_lists = mode == "1"
+
 # ---- Připojení k Wordu ----
 word = win32com.client.Dispatch("Word.Application")
 if word.Documents.Count == 0:
     word.Documents.Add()
 doc = word.ActiveDocument
-
 last_position = -1
 
 # ---- Funkce pro počítání podpoložek ----
@@ -85,8 +90,8 @@ try:
             info = get_info(para)
             if info["type"] == "seznam":
                 speak(f"Položka seznamu: '{info['text']}', Úroveň: {info['level']}, Pořadí: {info['index']} z {info['siblings_count']}, Podpoložek: {info['subitems_count']}")
-            else:
-                speak(f"Text: '{info['text']}'")
+            elif not only_lists:
+                speak(f"Mimo seznam: '{info['text']}'")
         time.sleep(0.5)
 except KeyboardInterrupt:
     speak("Ukončuji sledování Wordu.")
