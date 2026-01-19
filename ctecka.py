@@ -1,21 +1,13 @@
 import win32com.client
 import time
-import pygame
-from gtts import gTTS
-import io
+from accessible_output2.outputs.auto import Auto
 
 # ---- Hlasový výstup ----
-pygame.init()
+speech = Auto()
+
 def speak(text):
-    print(text)  # vypíše do příkazovky
-    tts = gTTS(text=text, lang='cs')
-    fp = io.BytesIO()
-    tts.write_to_fp(fp)
-    fp.seek(0)
-    pygame.mixer.music.load(fp, "mp3")
-    pygame.mixer.music.play()
-    while pygame.mixer.music.get_busy():
-        pygame.time.Clock().tick(10)
+    print(text)  # pro kontrolu v příkazovce
+    speech.speak(text)
 
 # ---- Dotaz na uživatele ----
 def ask_word_running():
@@ -92,12 +84,12 @@ try:
 
             if info["type"] == "seznam":
                 last_in_list = True
-                speak(f"Položka seznamu: '{info['text']}', Úroveň: {info['level']}, Pořadí: {info['index']} z {info['siblings_count']}, Podpoložek: {info['subitems_count']}")
+                speak(f"Položka seznamu: {info['text']}, Úroveň: {info['level']}, Pořadí: {info['index']} z {info['siblings_count']}, Podpoložek: {info['subitems_count']}")
             else:
                 if last_in_list and not only_lists:  # vyšel z seznamu
-                    speak(f"Mimo seznam: '{info['text']}'")
+                    speak(f"Mimo seznam: {info['text']}")
                 last_in_list = False  # teď jsme mimo seznam
 
-        time.sleep(0.5)
+        time.sleep(0.3)  # zrychlené čekání, Auto je rychlejší
 except KeyboardInterrupt:
     speak("Ukončuji sledování Wordu.")
