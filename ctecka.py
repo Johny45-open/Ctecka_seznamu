@@ -1,6 +1,7 @@
 import win32com.client
 import time
 from accessible_output2.outputs.auto import Auto
+import keyboard  # pip install keyboard
 
 # ---- Hlasový výstup ----
 speech = Auto()
@@ -30,6 +31,7 @@ if word.Documents.Count == 0:
 doc = word.ActiveDocument
 last_position = -1
 last_in_list = False  # pamatujeme si, jestli jsme byli v seznamu
+last_nonlist_text = ""  # pamatujeme si poslední text mimo seznam
 
 # ---- Funkce pro analýzu dokumentu ----
 def analyze_document(doc):
@@ -103,13 +105,20 @@ def get_info(paragraph):
     else:
         return {"text": text, "type": "text"}
 
+# ---- Funkce kontrolující, jestli uživatel píše ----
+def check_typing():
+    for key in "abcdefghijklmnopqrstuvwxyz0123456789":
+        if keyboard.is_pressed(key):
+            return True
+    return False
+
 # ---- Sledování Wordu ----
 speak("Nyní sleduji Word. Přesuň kurzor do seznamu nebo textu.")
-last_nonlist_text = ""  # pamatujeme si poslední text mimo seznam
 try:
     while True:
         sel = word.Selection
         start = sel.Start
+        typing = check_typing()  # True, pokud píšeš
         if start != last_position:
             last_position = start
             para = sel.Paragraphs(1)
@@ -119,13 +128,15 @@ try:
 
             if info["type"] == "seznam":
                 last_in_list = True
-                speak(f"Položka seznamu: {info['text']}, Úroveň: {info['level']}, Pořadí: {info['index']} z {info['siblings_count']}, Podpoložek: {info['subitems_count']}")
+                # mlčíme, pokud píšeme do seznamu
+                if not typing:
+                    speak(f"Položka seznamu: {info['text']}, Úroveň: {info['level']}, Pořadí: {info['index']} z {info['siblings_count']}, Podpoložek: {info['subitems_count']}")
             else:
                 if info["text"] != last_nonlist_text and not only_lists:
                     speak(f"Mimo seznam: {info['text']}")
                     last_nonlist_text = info["text"]
                 last_in_list = False
 
-        time.sleep(0.3)  # zrychlené čekání, Auto je rychlejší
+        time.sleep(0.3)
 except KeyboardInterrupt:
     speak("Ukončuji sledování Wordu.")
