@@ -30,8 +30,20 @@ if word.Documents.Count == 0:
     word.Documents.Add()
 doc = word.ActiveDocument
 last_position = -1
-last_in_list = False  # pamatujeme si, jestli jsme byli v seznamu
-last_nonlist_text = ""  # pamatujeme si poslední text mimo seznam
+last_in_list = False
+last_nonlist_text = ""
+
+# ---- Režim mlčení při psaní (můžeme zapnout/vypnout) ----
+silent_mode_enabled = True
+
+def toggle_silent_mode():
+    global silent_mode_enabled
+    silent_mode_enabled = not silent_mode_enabled
+    status = "zapnutý" if silent_mode_enabled else "vypnutý"
+    speak(f"Režim mlčení při psaní je nyní {status}")
+
+# Klávesová zkratka Ctrl+Shift+M pro zap/vyp
+keyboard.add_hotkey("ctrl+shift+m", toggle_silent_mode)
 
 # ---- Funkce pro analýzu dokumentu ----
 def analyze_document(doc):
@@ -40,7 +52,7 @@ def analyze_document(doc):
     for para in doc.Paragraphs:
         if para.Range.ListFormat.ListType != 0:
             list_count += 1
-        elif para.Range.Text.strip():  # ignorujeme prázdné odstavce
+        elif para.Range.Text.strip():
             text_count += 1
 
     if list_count == 0 and text_count == 0:
@@ -88,9 +100,9 @@ def count_subitems(paragraph):
 # ---- Funkce pro získání informací o odstavci ----
 def get_info(paragraph):
     text = paragraph.Range.Text.strip()
-    if not text:  # přeskočíme prázdné odstavce
+    if not text:
         return None
-    if paragraph.Range.ListFormat.ListType != 0:  # seznam
+    if paragraph.Range.ListFormat.ListType != 0:
         level = paragraph.Range.ListFormat.ListLevelNumber
         siblings_count = sum(
             1 for p in doc.Paragraphs
@@ -124,12 +136,11 @@ try:
             para = sel.Paragraphs(1)
             info = get_info(para)
             if info is None:
-                continue  # přeskočíme prázdný odstavec
+                continue
 
             if info["type"] == "seznam":
                 last_in_list = True
-                # mlčíme, pokud píšeme do seznamu
-                if not typing:
+                if not (silent_mode_enabled and typing):
                     speak(f"Položka seznamu: {info['text']}, Úroveň: {info['level']}, Pořadí: {info['index']} z {info['siblings_count']}, Podpoložek: {info['subitems_count']}")
             else:
                 if info["text"] != last_nonlist_text and not only_lists:
