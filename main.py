@@ -40,8 +40,13 @@ def toggle_silent_mode():
 keyboard.add_hotkey("ctrl+shift+m", toggle_silent_mode)
 
 # ---- Inicializace dokumentu ----
-speak(f"Otevřený dokument se jmenuje: {word.doc.Name}")
 doc_type, list_count, text_count = word.analyze_document()
+if doc_type == "prázdný":
+    speak("Dokument neobsahuje žádný text. Ukončuji aplikaci.")
+    time.sleep(2)
+    exit()
+
+speak(f"Otevřený dokument se jmenuje: {word.doc.Name}")
 speak(f"Dokument obsahuje {doc_type}. Seznamů: {list_count}, normálních odstavců: {text_count}")
 
 # ---- Typ hlášení ----
@@ -86,4 +91,5 @@ try:
         
         time.sleep(0.3)
 except KeyboardInterrupt:
-    speak("Ukončuji sledování Wordu.")
+    speak("Ukončuji sledování Wordu a zavírám aplikaci.")
+    time.sleep(2)
