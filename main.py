@@ -26,6 +26,7 @@ speak("Běží Word? Odpověz ano nebo ne.")
 answer = input("Zadej odpověď (ano/ne): ").strip().lower()
 if not answer.startswith("a"):
     speak("Word neběží, ukončuji aplikaci.")
+    speaker.wait_for_speech_to_finish()
     exit()
 
 # ---- Režim mlčení ----
@@ -43,7 +44,7 @@ keyboard.add_hotkey("ctrl+shift+m", toggle_silent_mode)
 doc_type, list_count, text_count = word.analyze_document()
 if doc_type == "prázdný":
     speak("Dokument neobsahuje žádný text. Ukončuji aplikaci.")
-    time.sleep(2)
+    speaker.wait_for_speech_to_finish()
     exit()
 
 speak(f"Otevřený dokument se jmenuje: {word.doc.Name}")
@@ -92,4 +93,4 @@ try:
         time.sleep(0.3)
 except KeyboardInterrupt:
     speak("Ukončuji sledování Wordu a zavírám aplikaci.")
-    time.sleep(2)
+    speaker.wait_for_speech_to_finish()
