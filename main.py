@@ -7,6 +7,17 @@ from word_handler import WordHandler
 speaker = Speaker()
 word = WordHandler()
 
+# Pokud neběží čtečka, zeptáme se na nastavení hlasu
+if not speaker.is_screen_reader:
+    print("Čtečka neběží. Nastavme hlas.")
+    try:
+        rate = int(input("Zadej rychlost hlasu (výchozí 150): ") or 150)
+        volume = float(input("Zadej hlasitost (0.0 až 1.0, výchozí 1.0): ") or 1.0)
+        speaker.set_rate(rate)
+        speaker.set_volume(volume)
+    except ValueError:
+        print("Neplatný vstup, použiji výchozí hodnoty.")
+
 def speak(text, interrupt=False):
     speaker.speak(text, interrupt)
 
