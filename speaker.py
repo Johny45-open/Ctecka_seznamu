@@ -1,7 +1,5 @@
 import ctypes
-import pyttsx3
-import threading
-import queue
+import win32com.client
 from accessible_output2.outputs.auto import Auto
 
 class Speaker:
@@ -10,21 +8,10 @@ class Speaker:
         if self.is_screen_reader:
             self.engine = Auto()
         else:
-            self.queue = queue.Queue()
-            self.engine = pyttsx3.init()
-            self.engine.setProperty('rate', 150)
-            self.engine.setProperty('volume', 1.0)
-            self.worker_thread = threading.Thread(target=self._run_engine, daemon=True)
-            self.worker_thread.start()
-
-    def _run_engine(self):
-        while True:
-            text, interrupt = self.queue.get()
-            if interrupt:
-                self.engine.stop()
-            self.engine.say(text)
-            self.engine.runAndWait()
-            self.queue.task_done()
+            # Použijeme nativní SAPI rozhraní pro maximální stabilitu na Windows
+            self.engine = win32com.client.Dispatch("SAPI.SpVoice")
+            self.rate = 0  # Výchozí rychlost SAPI je 0
+            self.volume = 100 # Hlasitost 0-100
 
     def _check_screen_reader(self):
         val = ctypes.c_uint(0)
@@ -37,20 +24,20 @@ class Speaker:
         if self.is_screen_reader:
             self.engine.speak(text)
         else:
-            # Vyprázdnění fronty při přerušení
+            # SAPI.SpVoiceflags 1 (SVSFlagsAsync) zajistí, že hlas nebude blokovat program
+            flags = 1
             if interrupt:
-                while not self.queue.empty():
-                    try:
-                        self.queue.get_nowait()
-                        self.queue.task_done()
-                    except queue.Empty:
-                        break
-            self.queue.put((text, interrupt))
+                # 3 = SVSFPurgeBeforeSpeak | SVSFlagsAsync
+                flags = 3
+            self.engine.Speak(text, flags)
 
     def set_rate(self, rate):
         if not self.is_screen_reader:
-            self.engine.setProperty('rate', rate)
+            # Přepočet z 150 (pyttsx3) na SAPI rozsah (-10 až 10)
+            # Rychlost cca 150 v pyttsx3 odpovídá zhruba 0 v SAPI
+            sapi_rate = min(10, max(-10, (rate - 150) // 10))
+            self.engine.Rate = sapi_rate
 
     def set_volume(self, volume):
         if not self.is_screen_reader:
-            self.engine.setProperty('volume', volume)
+            self.engine.Volume = int(volume * 100)
