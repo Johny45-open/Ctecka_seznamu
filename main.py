@@ -2,21 +2,29 @@ import time
 import keyboard
 from speaker import Speaker
 from word_handler import WordHandler
+import config
 
 # Inicializace
 speaker = Speaker()
 word = WordHandler()
 
-# Pokud neběží čtečka, zeptáme se na nastavení hlasu
+# Pokud neběží čtečka, načteme konfiguraci
 if not speaker.is_screen_reader:
-    print("Čtečka neběží. Nastavme hlas.")
-    try:
-        rate = int(input("Zadej rychlost hlasu (výchozí 150): ") or 150)
-        volume = float(input("Zadej hlasitost (0.0 až 1.0, výchozí 1.0): ") or 1.0)
-        speaker.set_rate(rate)
-        speaker.set_volume(volume)
-    except ValueError:
-        print("Neplatný vstup, použiji výchozí hodnoty.")
+    cfg = config.load_config()
+    speaker.set_rate(cfg["rate"])
+    speaker.set_volume(cfg["volume"])
+    
+    print(f"Aktuální nastavení: Rychlost={cfg['rate']}, Hlasitost={cfg['volume']}")
+    zmenit = input("Chceš změnit nastavení hlasu? (ano/ne): ").strip().lower()
+    if zmenit.startswith("a"):
+        try:
+            rate = int(input("Zadej rychlost hlasu (výchozí 150): ") or cfg["rate"])
+            volume = float(input("Zadej hlasitost (0.0 až 1.0, výchozí 1.0): ") or cfg["volume"])
+            speaker.set_rate(rate)
+            speaker.set_volume(volume)
+            config.save_config(rate, volume)
+        except ValueError:
+            print("Neplatný vstup, použiji staré hodnoty.")
 
 def speak(text, interrupt=False):
     speaker.speak(text, interrupt)

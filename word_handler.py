@@ -42,20 +42,46 @@ class WordHandler:
                     count += 1
         return count
 
+    def get_list_range(self, paragraph):
+        # Najde rozsah bloku seznamu, ve kterém se nachází odstavec
+        start = paragraph.Range.Start
+        end = paragraph.Range.End
+        
+        # Hledání nahoru
+        current = paragraph
+        while current.Previous is not None and current.Previous.Range.ListFormat.ListType != 0:
+            current = current.Previous
+            start = current.Range.Start
+            
+        # Hledání dolů
+        current = paragraph
+        while current.Next is not None and current.Next.Range.ListFormat.ListType != 0:
+            current = current.Next
+            end = current.Range.End
+            
+        return start, end
+
     def get_info(self, paragraph):
         text = paragraph.Range.Text.strip()
         if not text:
             return None
         if paragraph.Range.ListFormat.ListType != 0:
             level = paragraph.Range.ListFormat.ListLevelNumber
-            siblings_count = sum(
-                1 for p in self.doc.Paragraphs
-                if p.Range.ListFormat.ListType !=0 and p.Range.ListFormat.ListLevelNumber==level
-            )
-            index = sum(
-                1 for p in self.doc.Paragraphs
-                if p.Range.ListFormat.ListType !=0 and p.Range.ListFormat.ListLevelNumber==level and p.Range.Start<=paragraph.Range.Start
-            )
+            start_range, end_range = self.get_list_range(paragraph)
+            
+            # Počítání v rámci tohoto rozsahu
+            siblings_count = 0
+            index = 0
+            found = False
+            
+            for p in self.doc.Paragraphs:
+                if start_range <= p.Range.Start <= end_range and \
+                   p.Range.ListFormat.ListType != 0 and \
+                   p.Range.ListFormat.ListLevelNumber == level:
+                    siblings_count += 1
+                    if p.Range.Start <= paragraph.Range.Start:
+                        index += 1
+            
             subitems_count = self.count_subitems(paragraph)
             return {"text": text, "level": level, "index": index, "siblings_count": siblings_count, "subitems_count": subitems_count, "type": "seznam"}
         else:

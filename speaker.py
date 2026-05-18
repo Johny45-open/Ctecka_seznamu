@@ -50,8 +50,11 @@ class Speaker:
     def set_rate(self, rate):
         if not self.is_screen_reader:
             sapi_rate = min(10, max(-10, (rate - 150) // 10))
+            print(f"Debug: Nastavuji SAPI Rate na {sapi_rate} (z původních {rate})")
             self.engine.Rate = sapi_rate
 
     def set_volume(self, volume):
         if not self.is_screen_reader:
-            self.engine.Volume = int(volume * 100)
+            vol = int(max(0, min(100, volume * 100)))
+            print(f"Debug: Nastavuji SAPI Volume na {vol} (z původních {volume})")
+            self.engine.Volume = vol
