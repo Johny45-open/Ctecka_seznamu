@@ -43,21 +43,56 @@ class WordHandler:
         return count
 
     def get_list_range(self, paragraph):
-        # Najde rozsah bloku seznamu, ve kterém se nachází odstavec
+        # Najde rozsah bloku seznamu podle ListTemplateID a zachování úrovně
         start = paragraph.Range.Start
         end = paragraph.Range.End
         
+        # Získání informací o aktuálním odstavci
+        level = paragraph.Range.ListFormat.ListLevelNumber
+        try:
+            template_id = paragraph.Range.ListFormat.ListTemplate.ListTemplateID
+        except:
+            template_id = None
+        
         # Hledání nahoru
         current = paragraph
-        while current.Previous is not None and current.Previous.Range.ListFormat.ListType != 0:
-            current = current.Previous
-            start = current.Range.Start
+        while current.Previous() is not None:
+            prev = current.Previous()
+            prev_level = prev.Range.ListFormat.ListLevelNumber
+            try:
+                prev_template = prev.Range.ListFormat.ListTemplate.ListTemplateID
+            except:
+                prev_template = None
+            
+            # Blok pokračuje, pokud je stejná šablona a úroveň je stejná nebo vyšší
+            if prev.Range.ListFormat.ListType != 0 and prev_template == template_id and prev_level >= level:
+                current = prev
+                start = current.Range.Start
+                # Pokud jsme našli vyšší úroveň, tohle je začátek bloku pro tuto úroveň
+                if prev_level < level:
+                    break
+            else:
+                break
             
         # Hledání dolů
         current = paragraph
-        while current.Next is not None and current.Next.Range.ListFormat.ListType != 0:
-            current = current.Next
-            end = current.Range.End
+        while current.Next() is not None:
+            nxt = current.Next()
+            next_level = nxt.Range.ListFormat.ListLevelNumber
+            try:
+                next_template = nxt.Range.ListFormat.ListTemplate.ListTemplateID
+            except:
+                next_template = None
+                
+            # Blok pokračuje, pokud je stejná šablona a úroveň je stejná nebo vyšší
+            if nxt.Range.ListFormat.ListType != 0 and next_template == template_id and next_level >= level:
+                current = nxt
+                end = current.Range.End
+                # Pokud narazíme na úroveň nižší než je naše, seznam pro tuto úroveň končí
+                if next_level < level:
+                    break
+            else:
+                break
             
         return start, end
 
@@ -69,13 +104,15 @@ class WordHandler:
             level = paragraph.Range.ListFormat.ListLevelNumber
             start_range, end_range = self.get_list_range(paragraph)
             
+            # Diagnostika
+            print(f"DEBUG: Rozsah {start_range}-{end_range}, Odstavec {paragraph.Range.Start}-{paragraph.Range.End}")
+            
             # Počítání v rámci tohoto rozsahu
             siblings_count = 0
             index = 0
-            found = False
             
             for p in self.doc.Paragraphs:
-                if start_range <= p.Range.Start <= end_range and \
+                if p.Range.Start >= start_range and p.Range.End <= end_range and \
                    p.Range.ListFormat.ListType != 0 and \
                    p.Range.ListFormat.ListLevelNumber == level:
                     siblings_count += 1
