@@ -104,9 +104,6 @@ class WordHandler:
             level = paragraph.Range.ListFormat.ListLevelNumber
             start_range, end_range = self.get_list_range(paragraph)
             
-            # Diagnostika
-            print(f"DEBUG: Rozsah {start_range}-{end_range}, Odstavec {paragraph.Range.Start}-{paragraph.Range.End}")
-            
             # Počítání v rámci tohoto rozsahu
             siblings_count = 0
             index = 0
