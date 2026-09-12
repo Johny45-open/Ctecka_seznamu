@@ -27,19 +27,18 @@ class WordHandler:
         
         return doc_type, list_count, text_count
 
-    def count_subitems(self, paragraph):
+    def count_subitems(self, paragraph, list_end):
         if paragraph.Range.ListFormat.ListType == 0:
             return 0
         level = paragraph.Range.ListFormat.ListLevelNumber
-        start = paragraph.Range.Start
-        end = paragraph.Range.End
         count = 0
-        for p in self.doc.Paragraphs:
-            if p.Range.ListFormat.ListType != 0:
-                p_level = p.Range.ListFormat.ListLevelNumber
-                p_start = p.Range.Start
-                if start < p_start < end and p_level > level:
+        current = paragraph.Next()
+        while current is not None and current.Range.Start < list_end:
+            if current.Range.ListFormat.ListType != 0:
+                p_level = current.Range.ListFormat.ListLevelNumber
+                if p_level > level:
                     count += 1
+            current = current.Next()
         return count
 
     def get_list_range(self, paragraph):
@@ -108,15 +107,21 @@ class WordHandler:
             siblings_count = 0
             index = 0
             
-            for p in self.doc.Paragraphs:
-                if p.Range.Start >= start_range and p.Range.End <= end_range and \
-                   p.Range.ListFormat.ListType != 0 and \
-                   p.Range.ListFormat.ListLevelNumber == level:
-                    siblings_count += 1
-                    if p.Range.Start <= paragraph.Range.Start:
-                        index += 1
+            # Procházení pouze v rámci rozsahu seznamu
+            current = paragraph
+            # Najdeme začátek bloku pro počítání sourozenců
+            while current.Previous() is not None and current.Previous().Range.Start >= start_range:
+                current = current.Previous()
             
-            subitems_count = self.count_subitems(paragraph)
+            # Nyní procházíme od začátku
+            while current is not None and current.Range.End <= end_range:
+                if current.Range.ListFormat.ListType != 0 and current.Range.ListFormat.ListLevelNumber == level:
+                    siblings_count += 1
+                    if current.Range.Start <= paragraph.Range.Start:
+                        index += 1
+                current = current.Next()
+            
+            subitems_count = self.count_subitems(paragraph, end_range)
             return {"text": text, "level": level, "index": index, "siblings_count": siblings_count, "subitems_count": subitems_count, "type": "seznam"}
         else:
             return {"text": text, "type": "text"}
@@ -126,3 +131,91 @@ class WordHandler:
 
     def get_selection_start(self):
         return self.word.Selection.Start
+
+    def move_to_next_list_item(self):
+        # Pokusí se přesunout kurzor na další položku seznamu
+        current = self.get_selection_paragraph()
+        nxt = current.Next()
+        while nxt is not None:
+            if nxt.Range.ListFormat.ListType != 0:
+                nxt.Range.Select()
+                return True
+            nxt = nxt.Next()
+        return False
+
+    def move_to_previous_list_item(self):
+        # Pokusí se přesunout kurzor na předchozí položku seznamu
+        current = self.get_selection_paragraph()
+        prev = current.Previous()
+        while prev is not None:
+            if prev.Range.ListFormat.ListType != 0:
+                prev.Range.Select()
+                return True
+            prev = prev.Previous()
+        return False
+
+    def move_to_parent_list_item(self):
+        # Skok na nadřazenou položku
+        current = self.get_selection_paragraph()
+        level = current.Range.ListFormat.ListLevelNumber
+        if level <= 1:
+            return False
+        
+        prev = current.Previous()
+        while prev is not None:
+            if prev.Range.ListFormat.ListType != 0:
+                prev_level = prev.Range.ListFormat.ListLevelNumber
+                if prev_level < level:
+                    prev.Range.Select()
+                    return True
+            prev = prev.Previous()
+        return False
+
+    def move_to_start_of_list(self):
+        # Skok na začátek aktuálního bloku seznamu
+        current = self.get_selection_paragraph()
+        start_range, end_range = self.get_list_range(current)
+        
+        # Najít první položku v rozsahu
+        para = self.doc.Paragraphs(1) # Toto je neefektivní, ale v COM nemáme snadný přístup k odstavci podle start pozice bez iterace
+        # Lepší přístup:
+        rng = self.doc.Range(start_range, start_range)
+        rng.Paragraphs(1).Range.Select()
+        return True
+
+    def move_to_end_of_list(self):
+        # Skok na konec aktuálního bloku seznamu
+        current = self.get_selection_paragraph()
+        start_range, end_range = self.get_list_range(current)
+        
+        rng = self.doc.Range(end_range, end_range)
+        rng.Paragraphs(1).Range.Select()
+        return True
+
+    def get_hierarchy_path(self, paragraph):
+        # Vrací cestu k položce v hierarchii, např. "Instalace > Ovladače > USB"
+        path = []
+        current = paragraph
+        current_level = current.Range.ListFormat.ListLevelNumber
+        
+        while current is not None and current_level > 0:
+            text = current.Range.Text.strip()
+            path.insert(0, text)
+            
+            # Najít nadřazenou položku
+            found_parent = False
+            prev = current.Previous()
+            while prev is not None:
+                if prev.Range.ListFormat.ListType != 0:
+                    prev_level = prev.Range.ListFormat.ListLevelNumber
+                    if prev_level < current_level:
+                        current = prev
+                        current_level = prev_level
+                        found_parent = True
+                        break
+                prev = prev.Previous()
+            
+            if not found_parent:
+                break
+                
+        return " > ".join(path)

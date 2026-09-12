@@ -1,12 +1,15 @@
 import time
 import keyboard
+import queue
 from speaker import Speaker
 from word_handler import WordHandler
+from worker import WordMonitor
 import config
 
 # Inicializace
 speaker = Speaker()
 word = WordHandler()
+update_queue = queue.Queue()
 
 # Pokud neběží čtečka, načteme konfiguraci
 if not speaker.is_screen_reader:
@@ -48,6 +51,45 @@ def toggle_silent_mode():
 
 keyboard.add_hotkey("ctrl+shift+m", toggle_silent_mode)
 
+# ---- Navigace a hierarchie ----
+def navigate_next():
+    if word.move_to_next_list_item():
+        speak("Další položka")
+    else:
+        speak("Konec seznamu")
+
+def navigate_prev():
+    if word.move_to_previous_list_item():
+        speak("Předchozí položka")
+    else:
+        speak("Začátek seznamu")
+
+def navigate_parent():
+    if word.move_to_parent_list_item():
+        speak("Nadřazená položka")
+    else:
+        speak("Žádná nadřazená položka")
+
+def navigate_start():
+    word.move_to_start_of_list()
+    speak("Začátek seznamu")
+
+def navigate_end():
+    word.move_to_end_of_list()
+    speak("Konec seznamu")
+
+def announce_hierarchy():
+    para = word.get_selection_paragraph()
+    path = word.get_hierarchy_path(para)
+    speak(f"Cesta: {path}")
+
+keyboard.add_hotkey("alt+shift+right", navigate_next)
+keyboard.add_hotkey("alt+shift+left", navigate_prev)
+keyboard.add_hotkey("alt+shift+up", navigate_parent)
+keyboard.add_hotkey("alt+shift+home", navigate_start)
+keyboard.add_hotkey("alt+shift+end", navigate_end)
+keyboard.add_hotkey("alt+shift+c", announce_hierarchy)
+
 # ---- Inicializace dokumentu ----
 doc_type, list_count, text_count = word.analyze_document()
 if doc_type == "prázdný":
@@ -74,31 +116,37 @@ def check_typing():
     return False
 
 # ---- Hlavní smyčka ----
-last_position = -1
+monitor = WordMonitor(update_queue)
+monitor.start()
+
 last_nonlist_text = ""
+last_info = None  # Cache pro poslední ohlášenou položku
 
 speak("Nyní sleduji Word. Přesuň kurzor.")
 try:
     while True:
-        start = word.get_selection_start()
-        typing = check_typing()
-        
-        if start != last_position:
-            last_position = start
-            para = word.get_selection_paragraph()
-            info = word.get_info(para)
+        try:
+            info = update_queue.get(timeout=0.1)
+            typing = check_typing()
             
             if info:
                 if info["type"] == "seznam":
-                    if not (silent_mode_enabled and typing):
-                        msg = f"Položka seznamu: {info['text']}, Úroveň: {info['level']}, Pořadí: {info['index']} z {info['siblings_count']}, Podpoložek: {info['subitems_count']}"
-                        speak(msg, interrupt=True)
+                    # Kontrola, zda se změnily relevantní údaje
+                    if not last_info or info["text"] != last_info["text"] or info["level"] != last_info["level"] or info["index"] != last_info["index"]:
+                        if not (silent_mode_enabled and typing):
+                            msg = f"Položka: {info['text']}, Úroveň: {info['level']}, Pořadí: {info['index']} z {info['siblings_count']}, Podpoložek: {info['subitems_count']}"
+                            speak(msg, interrupt=True)
+                            last_info = info
                 else:
                     if info["text"] != last_nonlist_text and not only_lists:
                         speak(f"Mimo seznam: {info['text']}", interrupt=True)
                         last_nonlist_text = info["text"]
+                        last_info = None # Reset při přechodu mimo seznam
+        except queue.Empty:
+            pass
         
-        time.sleep(0.3)
+        time.sleep(0.1)
 except KeyboardInterrupt:
+    monitor.stop()
     speak("Ukončuji sledování Wordu a zavírám aplikaci.")
     speaker.wait_for_speech_to_finish()
