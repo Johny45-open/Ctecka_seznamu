@@ -1,9 +1,12 @@
+import logging
 import threading
 import queue
 import time
 import pythoncom
 import win32com.client
 from word_handler import WordHandler
+
+logger = logging.getLogger(__name__)
 
 class WordMonitor(threading.Thread):
     def __init__(self, update_queue):
@@ -25,8 +28,8 @@ class WordMonitor(threading.Thread):
                         info = handler.get_info(para)
                         self.update_queue.put(info)
                 except Exception as e:
-                    # Robustní ošetření COM chyb
-                    print(f"Error in monitor: {e}")
+                    # Robustní ošetření COM chyb – diagnostický log, ne konzolová interakce
+                    logger.debug("Error in monitor: %s", e)
                 time.sleep(0.3)
         finally:
             pythoncom.CoUninitialize()

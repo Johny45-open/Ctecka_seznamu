@@ -1,6 +1,9 @@
 import ctypes
+import logging
 import win32com.client
 from accessible_output2.outputs.auto import Auto
+
+logger = logging.getLogger(__name__)
 
 class Speaker:
     def __init__(self):
@@ -19,7 +22,7 @@ class Speaker:
         return False
 
     def speak(self, text, interrupt=False):
-        print(f"Hlas: {text}")
+        logger.debug("Hlas: %s", text)
         if self.is_screen_reader:
             self.engine.speak(text)
         else:
@@ -33,7 +36,7 @@ class Speaker:
             return False
         # 1 = SVSFPending, 2 = SVSFIsSpeaking
         state = self.engine.Status.RunningState
-        print(f"Debug: SAPI RunningState = {state}")
+        logger.debug("SAPI RunningState = %s", state)
         return state != 0
 
     def wait_for_speech_to_finish(self):
@@ -45,16 +48,16 @@ class Speaker:
             while self.is_speaking() and max_wait > 0:
                 time.sleep(0.1)
                 max_wait -= 1
-            print("Debug: Čekání na hlas ukončeno.")
+            logger.debug("Čekání na hlas ukončeno.")
 
     def set_rate(self, rate):
         if not self.is_screen_reader:
             sapi_rate = min(10, max(-10, (rate - 150) // 10))
-            print(f"Debug: Nastavuji SAPI Rate na {sapi_rate} (z původních {rate})")
+            logger.debug("Nastavuji SAPI Rate na %s (z původních %s)", sapi_rate, rate)
             self.engine.Rate = sapi_rate
 
     def set_volume(self, volume):
         if not self.is_screen_reader:
             vol = int(max(0, min(100, volume * 100)))
-            print(f"Debug: Nastavuji SAPI Volume na {vol} (z původních {volume})")
+            logger.debug("Nastavuji SAPI Volume na %s (z původních %s)", vol, volume)
             self.engine.Volume = vol

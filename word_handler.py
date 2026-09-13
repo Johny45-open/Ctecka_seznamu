@@ -1,11 +1,41 @@
+import logging
 import win32com.client
 
+logger = logging.getLogger(__name__)
+
 class WordHandler:
-    def __init__(self):
-        self.word = win32com.client.Dispatch("Word.Application")
-        if self.word.Documents.Count == 0:
-            self.word.Documents.Add()
-        self.doc = self.word.ActiveDocument
+    def __init__(self, auto_connect=True):
+        self.word = None
+        self.doc = None
+        if auto_connect:
+            self.try_connect()
+
+    def try_connect(self):
+        """Pokusí se programově připojit k Wordu bez dotazování uživatele.
+        Vrací True pokud je Word dostupný a existuje aktivní dokument."""
+        try:
+            self.word = win32com.client.Dispatch("Word.Application")
+            if self.word.Documents.Count == 0:
+                self.word.Documents.Add()
+            self.doc = self.word.ActiveDocument
+            # Ověření, že je dokument skutečně přístupný
+            _ = self.doc.Name
+            return True
+        except Exception as e:
+            logger.debug("Word try_connect selhal: %s", e)
+            self.word = None
+            self.doc = None
+            return False
+
+    def is_connected(self):
+        """Ověří, zda je Word stále dostupný (bez dotazu uživateli)."""
+        try:
+            if self.word is None or self.doc is None:
+                return False
+            _ = self.doc.Name
+            return True
+        except Exception:
+            return False
 
     def analyze_document(self):
         list_count = 0
