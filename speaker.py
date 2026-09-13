@@ -61,3 +61,46 @@ class Speaker:
             vol = int(max(0, min(100, volume * 100)))
             logger.debug("Nastavuji SAPI Volume na %s (z původních %s)", vol, volume)
             self.engine.Volume = vol
+
+    def list_voices(self):
+        """Vrátí list[(voice_id, voice_name)] pro SAPI, prázdný pokud běží odečítač."""
+        if self.is_screen_reader:
+            return []
+        try:
+            voices = []
+            for v in self.engine.GetVoices():
+                try:
+                    vid = v.Id
+                    vname = v.GetDescription()
+                    voices.append((vid, vname))
+                except Exception:
+                    continue
+            return voices
+        except Exception as e:
+            logger.debug("list_voices selhal: %s", e)
+            return []
+
+    def set_voice(self, voice_id):
+        """Nastaví SAPI hlas podle Id. Vrací True pokud úspěšně, False jinak.
+        Vyžaduje SAPI engine (ne screen reader)."""
+        if self.is_screen_reader or not voice_id:
+            return False
+        try:
+            for v in self.engine.GetVoices():
+                if v.Id == voice_id:
+                    self.engine.Voice = v
+                    logger.debug("Nastaven SAPI hlas na %s", voice_id)
+                    return True
+            logger.debug("Hlas %s nenalezen", voice_id)
+            return False
+        except Exception as e:
+            logger.debug("set_voice selhal: %s", e)
+            return False
+
+    def get_current_voice_id(self):
+        if self.is_screen_reader:
+            return None
+        try:
+            return self.engine.Voice.Id
+        except Exception:
+            return None
