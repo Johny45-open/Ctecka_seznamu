@@ -4,6 +4,7 @@ import queue
 import sys
 import os
 import logging
+from datetime import datetime, timedelta, timezone
 from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon, QMenu, QDialog
 from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtCore import QTimer, QObject, pyqtSignal
@@ -12,6 +13,9 @@ from word_handler import WordHandler
 from worker import WordMonitor
 import config
 from settings_dialog import SettingsDialog
+from version import APP_VERSION
+from update_worker import UpdateCheckWorker
+from update_dialog import UpdateDialog
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +157,44 @@ def build_announcement(info, cfg):
     return ", ".join(parts)
 
 
+AUTO_CHECK_INTERVAL = timedelta(hours=24)
+
+
+def _parse_check_timestamp(value):
+    """Převede last_update_check (ISO string) na datetime, jinak None."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, TypeError):
+        return None
+
+
+def should_auto_check(cfg, now=None):
+    """Rozhodne, zda má proběhnout tichá automatická kontrola (max 1x/24 h).
+
+    Čistá funkce bez GUI – snadno testovatelná.
+    """
+    if not cfg.get("auto_check_updates", True):
+        return False
+    last = _parse_check_timestamp(cfg.get("last_update_check"))
+    if last is None:
+        return True
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    return (now - last) >= AUTO_CHECK_INTERVAL
+
+
+def stamp_update_check(cfg):
+    """Uloží aktuální čas do last_update_check. Volat jen po ÚSPĚŠNÉ kontrole."""
+    cfg["last_update_check"] = datetime.now(timezone.utc).isoformat()
+    config.save_config(cfg)
+
+
 def main():
     global speaker, word, update_queue
 
@@ -264,6 +306,97 @@ def main():
     keyboard.add_hotkey("ctrl+shift+q", request_open_settings)
     keyboard.add_hotkey("ctrl+shift+s", request_open_settings)
 
+    # ---- Kontrola aktualizací (QThread worker + přístupný dialog) ----
+    # Držíme reference na běžící workery, aby je GC nesebral před finished.
+    update_workers = []
+    # Aktivní ruční dialog (zabrání vícenásobnému otevírání během jedné kontroly).
+    manual_dialog = {"dlg": None}
+
+    def _cleanup_worker(worker):
+        try:
+            worker.quit()
+            worker.wait(2000)
+        except Exception:
+            pass
+        try:
+            worker.deleteLater()
+        except Exception:
+            pass
+        if worker in update_workers:
+            update_workers.remove(worker)
+
+    def start_update_check(modal_dialog=None, silent=False):
+        """Spustí kontrolu mimo GUI thread. Výsledek se vrátí signálem.
+
+        Args:
+            modal_dialog: UpdateDialog k naplnění výsledkem (ruční kontrola),
+                nebo None pro tichou automatickou kontrolu.
+            silent: True = nezobrazovat nic kromě nalezené nové verze,
+                chyby a 'aktuální' stav zůstanou potichu.
+        """
+        worker = UpdateCheckWorker(current_version=APP_VERSION)
+        update_workers.append(worker)
+
+        def on_finished(result):
+            try:
+                if modal_dialog is not None:
+                    # Ruční kontrola: výsledek vždy (i chyba / aktuální).
+                    # Pokud uživatel dialog mezitím zavřel, výsledek tiše zahodit.
+                    try:
+                        if modal_dialog.isVisible():
+                            modal_dialog.set_result(result)
+                        # else: dialog zavřen uživatelem -> nic nezobrazovat
+                    except RuntimeError:
+                        pass  # dialog mezitím zničen – výsledek zahodit
+                else:
+                    # Tichá automatická kontrola:
+                    if result.status == "update_available":
+                        dlg = UpdateDialog(APP_VERSION)
+                        dlg.set_result(result)
+                        dlg.show()
+                        dlg.activateWindow()
+                    if result.status in ("update_available", "up_to_date"):
+                        # Timestamp jen po ÚSPĚCHU – při síťové chybě nerušit
+                        # konfiguraci ani nerestartovat 24h okno.
+                        try:
+                            fresh = config.load_config()
+                            stamp_update_check(fresh)
+                            apply_config(fresh)
+                        except Exception as e:
+                            logger.debug("Uložení last_update_check selhalo: %s", e)
+            finally:
+                _cleanup_worker(worker)
+
+        worker.finished.connect(on_finished)
+        worker.start()
+        return worker
+
+    def manual_update_check():
+        """Tray menu → Zkontrolovat aktualizace… Vždy zobrazí výsledek."""
+        existing = manual_dialog["dlg"]
+        try:
+            if existing is not None and existing.isVisible():
+                existing.activateWindow()
+                return
+        except RuntimeError:
+            manual_dialog["dlg"] = None
+        dlg = UpdateDialog(APP_VERSION)
+        dlg.set_checking(APP_VERSION)
+        dlg.show()
+        dlg.activateWindow()
+        manual_dialog["dlg"] = dlg
+        start_update_check(modal_dialog=dlg, silent=False)
+
+    def schedule_auto_update_check():
+        """Tichá kontrola max 1x/24 h, neblokuje start, neruší při chybě."""
+        try:
+            fresh = config.load_config()
+        except Exception:
+            return
+        if not should_auto_check(fresh):
+            return
+        start_update_check(modal_dialog=None, silent=True)
+
     # ---- Systémová oznamovací oblast – druhý způsob otevření Nastavení ----
     tray = None
     try:
@@ -283,6 +416,11 @@ def main():
             act_settings.setAccessibleText("Otevřít Nastavení. Klávesová zkratka Ctrl Shift Q.")
             act_settings.triggered.connect(open_settings)
             menu.addAction(act_settings)
+
+            act_updates = QAction("Zkontrolovat aktualizace…", menu)
+            act_updates.setAccessibleText("Zkontrolovat aktualizace aplikace na GitHubu.")
+            act_updates.triggered.connect(manual_update_check)
+            menu.addAction(act_updates)
 
             menu.addSeparator()
 
@@ -348,6 +486,9 @@ def main():
     speak("Nyní sleduji Word. Přesuň kurzor. Nastavení otevřete klávesovou zkratkou Ctrl Shift Q nebo z oznamovací oblasti.")
 
     def cleanup():
+        # Bezpečné ukončení workerů kontroly aktualizací (neblokovat GUI navždy)
+        for worker in list(update_workers):
+            _cleanup_worker(worker)
         try:
             monitor.stop()
         except Exception:
@@ -363,6 +504,9 @@ def main():
             pass
 
     app.aboutToQuit.connect(cleanup)
+
+    # Automatická kontrola – odloženě po startu, mimo kritickou cestu spuštění.
+    QTimer.singleShot(5000, schedule_auto_update_check)
 
     def poll_queue():
         nonlocal last_nonlist_text, last_info

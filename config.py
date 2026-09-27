@@ -13,6 +13,8 @@ DEFAULT_CONFIG = {
     "announce_subitems": True,
     "announce_list_type": True,
     "voice_id": None,
+    "auto_check_updates": True,
+    "last_update_check": None,
 }
 
 

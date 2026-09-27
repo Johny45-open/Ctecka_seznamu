@@ -125,6 +125,16 @@ class SettingsDialog(QDialog):
         self.silent_check.setAccessibleDescription("Pokud je zaškrtnuto, aplikace přestane mluvit při psaní na klávesnici.")
         self.form_layout.addRow(self.silent_check)
 
+        # --- Automatická kontrola aktualizací ---
+        self.auto_update_check = QCheckBox("Automaticky kontrolovat aktualizace")
+        self.auto_update_check.setChecked(self.config.get("auto_check_updates", True))
+        self.auto_update_check.setAccessibleName("Automaticky kontrolovat aktualizace")
+        self.auto_update_check.setAccessibleDescription(
+            "Pokud je zaškrtnuto, aplikace maximálně jednou za 24 hodin tiše zkontroluje novou verzi na GitHubu. "
+            "Dialog se zobrazí pouze když je dostupná nová verze."
+        )
+        self.form_layout.addRow(self.auto_update_check)
+
         self.layout.addLayout(self.form_layout)
 
         # --- Skupina: Podrobnosti hlášení seznamu ---
@@ -193,6 +203,7 @@ class SettingsDialog(QDialog):
         if self.voice_combo is not None:
             order.append(self.voice_combo)
         order.extend([self.rate_spin, self.volume_spin, self.report_combo, self.silent_check,
+                      self.auto_update_check,
                       self.announce_list_type_check, self.announce_level_check,
                       self.announce_index_check, self.announce_subitems_check])
         # nastavit tab order postupně
@@ -211,6 +222,7 @@ class SettingsDialog(QDialog):
         cfg["volume"] = self.volume_spin.value()
         cfg["reporting_mode"] = self.report_combo.currentIndex() == 1
         cfg["silent_mode"] = self.silent_check.isChecked()
+        cfg["auto_check_updates"] = self.auto_update_check.isChecked()
         cfg["announce_list_type"] = self.announce_list_type_check.isChecked()
         cfg["announce_level"] = self.announce_level_check.isChecked()
         cfg["announce_index"] = self.announce_index_check.isChecked()
