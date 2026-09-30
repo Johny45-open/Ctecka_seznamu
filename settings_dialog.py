@@ -170,6 +170,21 @@ class SettingsDialog(QDialog):
 
         self.layout.addWidget(self.details_group)
 
+        # --- Informace o ručním režimu psaní (pouze text, neovládací prvek) ---
+        self.writing_mode_label = QLabel(
+            "Režim psaní: automatická hlášení dočasně umlčíte klávesovou zkratkou Ctrl+Shift+P. "
+            "Stejnou zkratkou hlášení obnovíte. Funguje i při aktivním Wordu, bez otevření Nastavení."
+        )
+        self.writing_mode_label.setWordWrap(True)
+        self.writing_mode_label.setAccessibleName("Informace o režimu psaní")
+        self.writing_mode_label.setAccessibleDescription(
+            "Stiskněte Ctrl Shift P pro zapnutí režimu psaní, který umlčí automatická hlášení Čtečky seznamů. "
+            "Opětovným stiskem Ctrl Shift P se hlášení obnoví."
+        )
+        # QLabel není focusovatelný – nenarušuje Tab pořadí, NVDA ho přečte v objektové navigaci.
+        self.writing_mode_label.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.layout.addWidget(self.writing_mode_label)
+
         # --- Tlačítka (QDialogButtonBox pro standardní role a Esc) ---
         self.button_box = QDialogButtonBox(self)
         if first_run:

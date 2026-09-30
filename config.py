@@ -1,7 +1,21 @@
 import json
 import os
+import shutil
 
-CONFIG_FILE = "config.json"
+APP_DIR_NAME = "Ctecka_seznamu"
+LEGACY_CONFIG_FILE = "config.json"
+
+
+def _get_appdata_dir():
+    """Vrátí %APPDATA%\\Ctecka_seznamu, s fallbackem na ~ na ne-Windows."""
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        return os.path.join(appdata, APP_DIR_NAME)
+    return os.path.join(os.path.expanduser("~"), "." + APP_DIR_NAME)
+
+
+CONFIG_DIR = _get_appdata_dir()
+CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 
 DEFAULT_CONFIG = {
     "rate": 150,
@@ -23,8 +37,30 @@ def get_default_config():
     return dict(DEFAULT_CONFIG)
 
 
+def ensure_config_dir():
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+
+
+def migrate_legacy_config():
+    """Nedestruktivní migrace ./config.json -> %APPDATA% (kopie, starý nemazat).
+
+    Provede se jen pokud nový config neexistuje a starý ano.
+    """
+    try:
+        if os.path.exists(CONFIG_FILE):
+            return False
+        if not os.path.exists(LEGACY_CONFIG_FILE):
+            return False
+        ensure_config_dir()
+        shutil.copy2(LEGACY_CONFIG_FILE, CONFIG_FILE)
+        return True
+    except Exception:
+        return False
+
+
 def load_config():
     default_config = get_default_config()
+    migrate_legacy_config()
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -41,6 +77,7 @@ def load_config():
 
 def save_config(config_data):
     # Atomický zápis aby pád nepoškodil soubor
+    ensure_config_dir()
     tmp = CONFIG_FILE + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(config_data, f, ensure_ascii=False, indent=2)

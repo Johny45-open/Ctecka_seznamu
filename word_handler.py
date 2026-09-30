@@ -83,7 +83,9 @@ class WordHandler:
         except:
             template_id = None
         
-        # Hledání nahoru
+        # Hledání nahoru – blok pokračuje, dokud je stejná šablona,
+        # jde o položku seznamu a úroveň je stejná nebo hlubší (>= level).
+        # Rodič (nižší číslo úrovně), jiná šablona nebo nelist blok ukončí.
         current = paragraph
         while current.Previous() is not None:
             prev = current.Previous()
@@ -92,18 +94,14 @@ class WordHandler:
                 prev_template = prev.Range.ListFormat.ListTemplate.ListTemplateID
             except:
                 prev_template = None
-            
-            # Blok pokračuje, pokud je stejná šablona a úroveň je stejná nebo vyšší
+
             if prev.Range.ListFormat.ListType != 0 and prev_template == template_id and prev_level >= level:
                 current = prev
                 start = current.Range.Start
-                # Pokud jsme našli vyšší úroveň, tohle je začátek bloku pro tuto úroveň
-                if prev_level < level:
-                    break
             else:
                 break
-            
-        # Hledání dolů
+
+        # Hledání dolů – symetricky k hledání nahoru.
         current = paragraph
         while current.Next() is not None:
             nxt = current.Next()
@@ -112,14 +110,10 @@ class WordHandler:
                 next_template = nxt.Range.ListFormat.ListTemplate.ListTemplateID
             except:
                 next_template = None
-                
-            # Blok pokračuje, pokud je stejná šablona a úroveň je stejná nebo vyšší
+
             if nxt.Range.ListFormat.ListType != 0 and next_template == template_id and next_level >= level:
                 current = nxt
                 end = current.Range.End
-                # Pokud narazíme na úroveň nižší než je naše, seznam pro tuto úroveň končí
-                if next_level < level:
-                    break
             else:
                 break
             

@@ -1,4 +1,5 @@
 import time
+import ctypes
 import keyboard
 import queue
 import sys
@@ -13,7 +14,7 @@ from word_handler import WordHandler
 from worker import WordMonitor
 import config
 from settings_dialog import SettingsDialog
-from version import APP_VERSION
+from version import APP_VERSION, get_version_string
 from update_worker import UpdateCheckWorker
 from update_dialog import UpdateDialog
 
@@ -35,11 +36,97 @@ def speak(text, interrupt=False):
         speaker.speak(text, interrupt)
 
 
-def check_typing():
-    for key in "abcdefghijklmnopqrstuvwxyz0123456789":
-        if keyboard.is_pressed(key):
-            return True
+TYPING_VKS = tuple(
+    list(range(0x41, 0x5B))  # A-Z (fyzické klávesy, pokrývá i české rozložení)
+    + list(range(0x30, 0x3A))  # 0-9
+    + list(range(0x60, 0x6A))  # numerická klávesnice
+    + [
+        0x20,  # mezerník
+        0x08,  # backspace (mazání při psaní)
+        0x2E,  # delete
+        0x10,  # Shift (diakritika/velká písmena)
+        0x11,  # Ctrl
+        0x12,  # Alt (AltGr pro české znaky)
+        # OEM interpunkce / diakritika (liší se dle rozložení, na cz klávesnici
+        # sem padají háčky, čárky, tečky, čárky nad samohláskami atd.)
+        0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF,
+        0xC0, 0xDB, 0xDC, 0xDD, 0xDE, 0xE2,
+    ]
+)
+
+
+def _default_key_state(vk):
+    """Jeden dotaz Win32 GetAsyncKeyState (high-bit = právě stisknuto)."""
+    try:
+        return (ctypes.windll.user32.GetAsyncKeyState(vk) & 0x8000) != 0
+    except Exception:
+        return False
+
+
+def check_typing(get_key_state=None):
+    """Jeden scan virtualnich klaves pres Win32, get_key_state je pro testy."""
+    fn = get_key_state or _default_key_state
+    try:
+        for vk in TYPING_VKS:
+            try:
+                if fn(vk):
+                    return True
+            except Exception:
+                continue
+    except Exception:
+        return False
     return False
+
+
+WRITING_MODE_ON_MSG = "Režim psaní zapnut."
+WRITING_MODE_OFF_MSG = "Režim psaní vypnut."
+
+
+class WritingModeState:
+    """Ruční dočasný stav umlčující automatická hlášení.
+
+    Oddělen od keyboard callbacku, aby šel unit-testovat bez fyzického
+    stisku kláves. Výchozí stav je vždy False (neukládá se do config.json).
+    """
+
+    def __init__(self):
+        self.writing_mode = False
+
+    def toggle(self):
+        """Přepne stav a vrátí (nový_stav, hláška_k_vyslovení)."""
+        self.writing_mode = not self.writing_mode
+        if self.writing_mode:
+            return True, WRITING_MODE_ON_MSG
+        return False, WRITING_MODE_OFF_MSG
+
+
+def should_speak(writing_mode, silent_mode_enabled, typing):
+    """Centrální gate pro automatická hlasová hlášení.
+
+    Povoleno pouze pokud současně platí:
+      - není aktivní ruční writing_mode,
+      - automatický silent_mode ho nezakazuje (silent AND typing).
+    Ruční režim má vždy prioritu jako explicitní zákaz.
+    """
+    if writing_mode:
+        return False
+    if silent_mode_enabled and typing:
+        return False
+    return True
+
+
+def drain_queue(q):
+    """Zahodí vše nahromaděné v queue. Vrací počet zahozených položek."""
+    dropped = 0
+    if q is None:
+        return 0
+    try:
+        while True:
+            q.get_nowait()
+            dropped += 1
+    except queue.Empty:
+        pass
+    return dropped
 
 
 def navigate_next():
@@ -458,6 +545,23 @@ def main():
 
     keyboard.add_hotkey("ctrl+shift+m", toggle_silent_mode)
 
+    # ---- Ruční režim psaní – dočasné umlčení automatických hlášení ----
+    # Stav se neukládá do config.json, po startu vždy False.
+    # WordMonitor běží dál, pouze se nehlásí; fronta se zahazuje.
+    writing_state = WritingModeState()
+
+    def toggle_writing_mode():
+        new_state, msg = writing_state.toggle()
+        # Zahodit backlog (před i po přepnutí), aby se po vypnutí
+        # nepřehrávaly staré hlášky nashromážděné během psaní.
+        try:
+            drain_queue(update_queue)
+        except Exception:
+            pass
+        speak(msg)
+
+    keyboard.add_hotkey("ctrl+shift+p", toggle_writing_mode)
+
     keyboard.add_hotkey("alt+shift+right", navigate_next)
     keyboard.add_hotkey("alt+shift+left", navigate_prev)
     keyboard.add_hotkey("alt+shift+up", navigate_parent)
@@ -483,7 +587,7 @@ def main():
     last_nonlist_text = ""
     last_info = None
 
-    speak("Nyní sleduji Word. Přesuň kurzor. Nastavení otevřete klávesovou zkratkou Ctrl Shift Q nebo z oznamovací oblasti.")
+    speak("Nyní sleduji Word. Přesuň kurzor. Nastavení otevřete klávesovou zkratkou Ctrl Shift Q nebo z oznamovací oblasti. Režim psaní přepnete klávesovou zkratkou Ctrl Shift P.")
 
     def cleanup():
         # Bezpečné ukončení workerů kontroly aktualizací (neblokovat GUI navždy)
@@ -510,6 +614,11 @@ def main():
 
     def poll_queue():
         nonlocal last_nonlist_text, last_info
+        # Ruční režim psaní má prioritu: nic automatického nehlásit,
+        # frontu zahodit (WordMonitor běží dál), pokračuje se od nových změn.
+        if writing_state.writing_mode:
+            drain_queue(update_queue)
+            return
         try:
             info = update_queue.get_nowait()
         except queue.Empty:
@@ -521,19 +630,20 @@ def main():
         if info:
             if info["type"] == "seznam":
                 if not last_info or info["text"] != last_info["text"] or info["level"] != last_info["level"] or info["index"] != last_info["index"]:
-                    if not (silent_mode_enabled and typing):
+                    if should_speak(writing_state.writing_mode, silent_mode_enabled, typing):
                         msg = build_announcement(info, cfg)
                         speak(msg, interrupt=True)
                         last_info = info
             else:
                 if info["text"] != last_nonlist_text and not only_lists:
-                    # Respektovat announce_list_type – pokud vypnuto, nehlásit "Mimo seznam:"
-                    if cfg.get("announce_list_type", True):
-                        speak(f"Mimo seznam: {info['text']}", interrupt=True)
-                    else:
-                        speak(info["text"], interrupt=True)
-                    last_nonlist_text = info["text"]
-                    last_info = None
+                    if should_speak(writing_state.writing_mode, silent_mode_enabled, typing):
+                        # Respektovat announce_list_type – pokud vypnuto, nehlásit "Mimo seznam:"
+                        if cfg.get("announce_list_type", True):
+                            speak(f"Mimo seznam: {info['text']}", interrupt=True)
+                        else:
+                            speak(info["text"], interrupt=True)
+                        last_nonlist_text = info["text"]
+                        last_info = None
 
     timer = QTimer()
     timer.timeout.connect(poll_queue)
@@ -545,4 +655,8 @@ def main():
 
 
 if __name__ == "__main__":
+    if "--version" in sys.argv:
+        print(get_version_string())
+        sys.exit(0)
+    logger.info(get_version_string())
     main()

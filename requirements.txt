@@ -1,0 +1,5 @@
+# Runtime zavislosti (overeno prostredi: Python 3.13, PyQt6 6.11.0)
+PyQt6==6.11.0
+keyboard==0.13.5
+pywin32==312
+accessible_output2==0.17

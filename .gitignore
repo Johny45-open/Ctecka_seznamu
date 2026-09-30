@@ -1,0 +1,12 @@
+# Generovano pri buildu (build.ps1), necommitovat
+_build_info.py
+
+# Build vystupy
+build/
+dist/
+
+# Python
+__pycache__/
+*.pyc
+.venv-build/
+.pytest_cache/
